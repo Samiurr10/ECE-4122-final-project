@@ -372,6 +372,7 @@ int main(int argc, char* argv[]) {
     uchar4 *d_image, *d_image_output;
     uchar4 *h_image;
     uchar4 *h_image_cpu_output;
+    struct timeval start_cpu, end_cpu;
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
@@ -379,6 +380,8 @@ int main(int argc, char* argv[]) {
     cudaMalloc((void **)&d_image_output, image_size);
     h_image = (uchar4 *)malloc(image_size);
     h_image_cpu_output = (uchar4 *)malloc(image_size);
+    double cpu_time;
+    float gpu_time_ms;
 
     // Load font
     sf::Font font;
@@ -446,16 +449,64 @@ int main(int argc, char* argv[]) {
                             dim3 threadsPerBlock(16, 16);
                             switch(id - 1) { 
                                 case 0: // Blur
+                                    gettimeofday(&start_cpu, NULL);
+                                    image_blur_cpu(h_image, h_image_cpu_output);
+                                    gettimeofday(&end_cpu, NULL);
+                                    cpu_time = (end_cpu.tv_sec - start_cpu.tv_sec) * 1000.0 + (end_cpu.tv_usec - start_cpu.tv_usec) / 1000.0;
+
+                                    cudaEventRecord(start, 0);
                                     image_blur<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_image_output);
+                                    cudaEventRecord(stop, 0);
+                                    cudaEventSynchronize(stop);
+                                    cudaEventElapsedTime(&gpu_time_ms, start, stop);
+
+                                    printf("CPU time: %f ms\n",cpu_time);
+                                    printf("GPU time %f ms\n", gpu_time_ms);
                                     break;
                                 case 1: // Grayscale
+
+                                    gettimeofday(&start_cpu, NULL);
+                                    image_blur_cpu(h_image, h_image_cpu_output);
+                                    gettimeofday(&end_cpu, NULL);
+                                    cpu_time = (end_cpu.tv_sec - start_cpu.tv_sec) * 1000.0 + (end_cpu.tv_usec - start_cpu.tv_usec) / 1000.0;
+
+                                    cudaEventRecord(start, 0);
                                     image_grayscale<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_image_output);
+                                    cudaEventRecord(stop, 0);
+                                    cudaEventSynchronize(stop);
+                                    cudaEventElapsedTime(&gpu_time_ms, start, stop);
+                                    printf("CPU time: %f ms\n",cpu_time);
+                                    printf("GPU time %f ms\n", gpu_time_ms);
                                     break;
                                 case 2: // Vignette
+
+                                    gettimeofday(&start_cpu, NULL);
+                                    image_blur_cpu(h_image, h_image_cpu_output);
+                                    gettimeofday(&end_cpu, NULL);
+                                    cpu_time = (end_cpu.tv_sec - start_cpu.tv_sec) * 1000.0 + (end_cpu.tv_usec - start_cpu.tv_usec) / 1000.0;
+
+                                    cudaEventRecord(start, 0);
                                     image_vignette<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_image_output);
+                                    cudaEventRecord(stop, 0);
+                                    cudaEventSynchronize(stop);
+                                    cudaEventElapsedTime(&gpu_time_ms, start, stop);
+                                    printf("CPU time: %f ms\n",cpu_time);
+                                    printf("GPU time %f ms\n", gpu_time_ms);
                                     break;
                                 case 3: // Sharpen
+
+                                    gettimeofday(&start_cpu, NULL);
+                                    image_blur_cpu(h_image, h_image_cpu_output);
+                                    gettimeofday(&end_cpu, NULL);
+                                    cpu_time = (end_cpu.tv_sec - start_cpu.tv_sec) * 1000.0 + (end_cpu.tv_usec - start_cpu.tv_usec) / 1000.0;
+
+                                    cudaEventRecord(start, 0);
                                     image_sharpen<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_image_output);
+                                    cudaEventRecord(stop, 0);
+                                    cudaEventSynchronize(stop);
+                                    cudaEventElapsedTime(&gpu_time_ms, start, stop);
+                                    printf("CPU time: %f ms\n",cpu_time);
+                                    printf("GPU time %f ms\n", gpu_time_ms);
                                     break;
                             }
 
