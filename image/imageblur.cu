@@ -440,7 +440,7 @@ int main(int argc, char* argv[]) {
                             }
                         } else {
                             // Process image
-                            input_image_file("input.ppm", h_image, IMAGE_DIM);
+                            input_image_file(input_filename, h_image, IMAGE_DIM);
                             cudaMemcpy(d_image, h_image, image_size, cudaMemcpyHostToDevice);
                             dim3 blocksPerGrid((IMAGE_DIM + 15) / 16, (IMAGE_DIM + 15) / 16);
                             dim3 threadsPerBlock(16, 16);
