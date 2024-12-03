@@ -4,6 +4,11 @@
 #include <math.h>
 #include <string.h>
 #include <sys/time.h>
+#include <SFML/Graphics.hpp>
+#include <cuda_runtime.h>
+#include <filesystem>
+#include <map>
+
 
 #include "util.h"
 #include "ppm.h"
@@ -12,6 +17,7 @@
 #define SAMPLE_SIZE 10
 #define SAMPLE_DIM (SAMPLE_SIZE * 2 + 1)
 #define NUMBER_OF_SAMPLES (SAMPLE_DIM * SAMPLE_DIM)
+
 
 /**************************************/
 /* Grayscale Conversion Kernel (GPU)  */
@@ -340,175 +346,149 @@ void image_sharpen_cpu(const uchar4 *image, uchar4 *image_output)
     }
 }
 
-int main(int argc, char **argv)
-{
-    unsigned int image_size;
+struct ButtonInfo {
+    sf::RectangleShape shape;
+    sf::Text text;
+};
+
+
+int main() {
+    sf::RenderWindow window(sf::VideoMode(1024, 600), "Image Processor");
+    
+    // Setup input/output image display
+    sf::Texture inputTexture, outputTexture;
+    sf::Sprite inputSprite, outputSprite;
+    inputSprite.setPosition(200, 10);  // Moved right to make room for buttons
+    outputSprite.setPosition(600, 10);
+
+    // CUDA setup
+    unsigned int image_size = IMAGE_DIM * IMAGE_DIM * sizeof(uchar4);
     uchar4 *d_image, *d_image_output;
     uchar4 *h_image;
     uchar4 *h_image_cpu_output;
     cudaEvent_t start, stop;
-
-    image_size = IMAGE_DIM * IMAGE_DIM * sizeof(uchar4);
-
-    if (argc != 3)
-    {
-        printf("Syntax: %s mode outputfilename.ppm\n\twhere mode is 0 (blur), 1 (grayscale), 2 (vignette), or 3 (sharpen)\n", argv[0]);
-        exit(1);
-    }
-    int mode = atoi(argv[1]);
-    const char *filename = argv[2];
-
-    // Create timers
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
-
-    // Allocate memory on the GPU for the input and output images
-    CHECK_ERROR(cudaMalloc((void **)&d_image, image_size));
-    CHECK_ERROR(cudaMalloc((void **)&d_image_output, image_size));
-
-    // Allocate and load host image
+    cudaMalloc((void **)&d_image, image_size);
+    cudaMalloc((void **)&d_image_output, image_size);
     h_image = (uchar4 *)malloc(image_size);
-    if (h_image == NULL)
-    {
-        printf("Malloc failed for h_image\n");
-        exit(1);
-    }
     h_image_cpu_output = (uchar4 *)malloc(image_size);
-    if (h_image_cpu_output == NULL)
-    {
-        printf("Malloc failed for h_image_cpu_output\n");
-        exit(1);
-    }
-    input_image_file("input.ppm", h_image, IMAGE_DIM);
 
-    // Copy image to device memory
-    CHECK_ERROR(cudaMemcpy(d_image, h_image, image_size, cudaMemcpyHostToDevice));
-
-    // CUDA grid and block dimensions
-    dim3 blocksPerGrid((IMAGE_DIM + 15) / 16, (IMAGE_DIM + 15) / 16);
-    dim3 threadsPerBlock(16, 16);
-
-    struct timeval start_cpu, end_cpu;
-    double cpu_time;
-    float gpu_time_ms;
-
-    switch (mode)
-    {
-    /*************************/
-    /* Blur using GPU memory */
-    /*************************/
-    case 0:
-    {
-        // CPU implementation
-        gettimeofday(&start_cpu, NULL);
-        image_blur_cpu(h_image, h_image_cpu_output);
-        gettimeofday(&end_cpu, NULL);
-        cpu_time = (end_cpu.tv_sec - start_cpu.tv_sec) * 1000.0 +
-                   (end_cpu.tv_usec - start_cpu.tv_usec) / 1000.0;
-
-        // GPU implementation
-        cudaEventRecord(start, 0);
-        image_blur<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_image_output);
-        check_launch("kernel blur");
-        cudaEventRecord(stop, 0);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&gpu_time_ms, start, stop);
-
-        printf("Blur filter applied.\n");
-        printf("CPU time: %f ms\n", cpu_time);
-        printf("GPU time: %f ms\n", gpu_time_ms);
-    }
-    break;
-
-    /*************************/
-    /* Grayscale Conversion  */
-    /*************************/
-    case 1:
-    {
-        // CPU implementation
-        gettimeofday(&start_cpu, NULL);
-        image_grayscale_cpu(h_image, h_image_cpu_output);
-        gettimeofday(&end_cpu, NULL);
-        cpu_time = (end_cpu.tv_sec - start_cpu.tv_sec) * 1000.0 +
-                   (end_cpu.tv_usec - start_cpu.tv_usec) / 1000.0;
-
-        // GPU implementation
-        cudaEventRecord(start, 0);
-        image_grayscale<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_image_output);
-        check_launch("kernel grayscale");
-        cudaEventRecord(stop, 0);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&gpu_time_ms, start, stop);
-
-        printf("Grayscale conversion applied.\n");
-        printf("CPU time: %f ms\n", cpu_time);
-        printf("GPU time: %f ms\n", gpu_time_ms);
-    }
-    break;
-
-    /*************************/
-    /* Vignette Filter       */
-    /*************************/
-    case 2:
-    {
-        // CPU implementation
-        gettimeofday(&start_cpu, NULL);
-        image_vignette_cpu(h_image, h_image_cpu_output);
-        gettimeofday(&end_cpu, NULL);
-        cpu_time = (end_cpu.tv_sec - start_cpu.tv_sec) * 1000.0 +
-                   (end_cpu.tv_usec - start_cpu.tv_usec) / 1000.0;
-
-        // GPU implementation
-        cudaEventRecord(start, 0);
-        image_vignette<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_image_output);
-        check_launch("kernel vignette");
-        cudaEventRecord(stop, 0);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&gpu_time_ms, start, stop);
-
-        printf("Vignette filter applied.\n");
-        printf("CPU time: %f ms\n", cpu_time);
-        printf("GPU time: %f ms\n", gpu_time_ms);
-    }
-    break;
-
-    /*************************/
-    /* Sharpen Filter        */
-    /*************************/
-    case 3:
-    {
-        // CPU implementation
-        gettimeofday(&start_cpu, NULL);
-        image_sharpen_cpu(h_image, h_image_cpu_output);
-        gettimeofday(&end_cpu, NULL);
-        cpu_time = (end_cpu.tv_sec - start_cpu.tv_sec) * 1000.0 +
-                   (end_cpu.tv_usec - start_cpu.tv_usec) / 1000.0;
-
-        // GPU implementation
-        cudaEventRecord(start, 0);
-        image_sharpen<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_image_output);
-        check_launch("kernel sharpen");
-        cudaEventRecord(stop, 0);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&gpu_time_ms, start, stop);
-
-        printf("Sharpen filter applied.\n");
-        printf("CPU time: %f ms\n", cpu_time);
-        printf("GPU time: %f ms\n", gpu_time_ms);
-    }
-    break;
-
-    default:
-        printf("Unknown mode %d\n", mode);
-        exit(1);
-        break;
+    // Load font
+    sf::Font font;
+    if (!font.loadFromFile("/usr/share/fonts/TTF/DejaVuSans.ttf")) {
+        printf("Error loading font\n");
+        return -1;
     }
 
-    // Copy the image back from the GPU for output to file
-    CHECK_ERROR(cudaMemcpy(h_image, d_image_output, image_size, cudaMemcpyDeviceToHost));
+    // Setup buttons with text
+    std::map<int, ButtonInfo> buttons;
+    std::map<int, std::string> buttonLabels = {
+        {0, "Load Image"},
+        {1, "Blur"},
+        {2, "Grayscale"},
+        {3, "Vignette"},
+        {4, "Sharpen"}
+    };
 
-    // Output image
-    output_image_file(filename, h_image, IMAGE_DIM);
+    // Create buttons with their text
+    for(auto& [id, label] : buttonLabels) {
+        ButtonInfo info;
+        info.shape.setSize(sf::Vector2f(150, 40));
+        info.shape.setPosition(20, 20 + id * 60);
+        info.shape.setFillColor(sf::Color(100, 100, 100));
+
+        info.text.setFont(font);
+        info.text.setString(label);
+        info.text.setCharacterSize(20);
+        info.text.setFillColor(sf::Color::White);
+        
+        // Center text in button
+        sf::FloatRect textBounds = info.text.getLocalBounds();
+        info.text.setPosition(
+            20 + (150 - textBounds.width) / 2,
+            20 + id * 60 + (40 - textBounds.height) / 2
+        );
+
+        buttons[id] = info;
+    }
+
+    // Main loop
+    while (window.isOpen()) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed) {
+                window.close();
+            }
+
+            if (event.type == sf::Event::MouseButtonPressed) {
+                for(auto& [id, info] : buttons) {
+                    if (info.shape.getGlobalBounds().contains(event.mouseButton.x, event.mouseButton.y)) {
+                        if (id == 0) { 
+                            const char* filename = "input.ppm"; 
+                            if (inputTexture.loadFromFile(filename)) {
+                                inputSprite.setTexture(inputTexture, true);
+                                // Scale image to fit
+                                float scaleX = 380.0f / inputTexture.getSize().x;
+                                float scaleY = 380.0f / inputTexture.getSize().y;
+                                float scale = std::min(scaleX, scaleY);
+                                inputSprite.setScale(scale, scale);
+                            }
+                        } else {
+                            // Process image
+                            input_image_file("input.ppm", h_image, IMAGE_DIM);
+                            cudaMemcpy(d_image, h_image, image_size, cudaMemcpyHostToDevice);
+                            dim3 blocksPerGrid((IMAGE_DIM + 15) / 16, (IMAGE_DIM + 15) / 16);
+                            dim3 threadsPerBlock(16, 16);
+                            switch(id - 1) { 
+                                case 0: // Blur
+                                    image_blur<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_image_output);
+                                    break;
+                                case 1: // Grayscale
+                                    image_grayscale<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_image_output);
+                                    break;
+                                case 2: // Vignette
+                                    image_vignette<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_image_output);
+                                    break;
+                                case 3: // Sharpen
+                                    image_sharpen<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_image_output);
+                                    break;
+                            }
+
+                            cudaMemcpy(h_image, d_image_output, image_size, cudaMemcpyDeviceToHost);
+                            output_image_file("output.ppm", h_image, IMAGE_DIM);
+                            outputTexture.loadFromFile("output.ppm");
+                            outputSprite.setTexture(outputTexture, true);
+                            // Scale output image
+                            float scaleX = 380.0f / outputTexture.getSize().x;
+                            float scaleY = 380.0f / outputTexture.getSize().y;
+                            float scale = std::min(scaleX, scaleY);
+                            outputSprite.setScale(scale, scale);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Render
+        window.clear(sf::Color(50, 50, 50));
+        
+        // Draw buttons and their text
+        for(auto& [id, info] : buttons) {
+            window.draw(info.shape);
+            window.draw(info.text);
+        }
+
+        // Draw images if they exist
+        if (inputTexture.getSize().x > 0) {
+            window.draw(inputSprite);
+        }
+        if (outputTexture.getSize().x > 0) {
+            window.draw(outputSprite);
+        }
+
+        window.display();
+    }
 
     // Cleanup
     cudaEventDestroy(start);
