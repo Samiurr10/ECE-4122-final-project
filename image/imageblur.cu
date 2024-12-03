@@ -350,9 +350,15 @@ struct ButtonInfo {
     sf::RectangleShape shape;
     sf::Text text;
 };
+//nvcc -ccbin /usr/bin/g++-13 imageblur.cu ppm.cu -lsfml-graphics -lsfml-window -lsfml-system -lsfml-system -o imageblur_gui -Xlinker --no-as-needed
 
+int main(int argc, char* argv[]) {
+    if (argc != 3 || strcmp(argv[1], "-T") != 0) {
+        printf("Usage: %s -T input.ppm\n", argv[0]);
+        return 1;
+    }
+    const char* input_filename = argv[2];
 
-int main() {
     sf::RenderWindow window(sf::VideoMode(1024, 600), "Image Processor");
     
     // Setup input/output image display
@@ -425,10 +431,8 @@ int main() {
                 for(auto& [id, info] : buttons) {
                     if (info.shape.getGlobalBounds().contains(event.mouseButton.x, event.mouseButton.y)) {
                         if (id == 0) { 
-                            const char* filename = "input.ppm"; 
-                            if (inputTexture.loadFromFile(filename)) {
+                            if (inputTexture.loadFromFile(input_filename)) {
                                 inputSprite.setTexture(inputTexture, true);
-                                // Scale image to fit
                                 float scaleX = 380.0f / inputTexture.getSize().x;
                                 float scaleY = 380.0f / inputTexture.getSize().y;
                                 float scale = std::min(scaleX, scaleY);
